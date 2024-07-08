@@ -5,7 +5,7 @@ global out
 
 def open_video(height: int, width: int, fps: int):
     global out
-    out = cv2.VideoWriter('output.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+    out = cv2.VideoWriter('outputs/output.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
     
 def write_frame(frame: np.array, fps: float, speed: float, max_speed: float,
                  min_speed: float, max_fps: float, min_fps: float):
