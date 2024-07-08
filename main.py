@@ -67,22 +67,20 @@ def analyze_frame(cap):
 
     # Get the frame from the video
     ret, frame_original = cap.read()
-    
-    frame = cv2.resize(frame_original, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
 
     #rotate the frame according to the planning
     current_frame += 1
-    frame = funcs.rotate(frame, current_frame, source_fps, PLANNING)
-
-    # get the excess of green 
-    exg = funcs.calcluate_exg(frame)
+    frame = funcs.rotate(frame_original, current_frame, source_fps, PLANNING)
+    
+    ##################
+    ## optical flow ##
+    ##################
     
     #calculate the optical flow
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
-    # calculate optical flow 
+    # calculate optical flow
     p1, status, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None)
-    #print(err)
     
     # Select good points 
     good_new = p1[status == 1] 
@@ -97,7 +95,14 @@ def analyze_frame(cap):
 
     # Calculate movements
     all_movements = a_b - c_d    
-        
+    
+    # Calculate the average movement
+    delta_movement = (np.mean(all_movements, axis=0).astype(int) * SIZE_FACTOR).astype(int)
+    
+    old_gray = frame_gray.copy() 
+    p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, 
+                                    **FEATURE_PARAMS)
+    
     if (display_flow := False): 
         black_screen = np.zeros_like(frame)
             
@@ -109,13 +114,15 @@ def analyze_frame(cap):
             cv2.circle(black_screen, (a, b), 2, 155, -1)
             
         cv2.imshow("Optical flow", black_screen)
+
+    #########################
+    ## end of optical flow ##
+    #########################
     
-    # Calculate the average movement
-    delta_movement = np.mean(all_movements, axis=0).astype(int)
-    
-    old_gray = frame_gray.copy() 
-    p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, 
-                                    **FEATURE_PARAMS)
+    frame = cv2.resize(frame, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
+
+    # get the excess of green 
+    exg = funcs.calcluate_exg(frame)
     
     # threshold the image
     tresh = funcs.threshold(exg)
@@ -131,7 +138,8 @@ def analyze_frame(cap):
                                                 opened_closed, solenoid_active, 
                                                 THRESHOLD)
     
-    sprayed = funcs.get_sprayed_weed(NUMBER_OF_COLS, ROW_PX_FROM_TOP, opened_closed, solenoid_active, SPRAY_RANGE, delta_movement, SPRAY_INTENSITY)
+    sprayed = funcs.get_sprayed_weed(NUMBER_OF_COLS, ROW_PX_FROM_TOP, opened_closed, solenoid_active,
+                                     SPRAY_RANGE, delta_movement, SPRAY_INTENSITY)
 
     for i in range(1, 256):
         frame[sprayed == i] = (0, 255-i, i)
@@ -167,7 +175,6 @@ def main():
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * SIZE_FACTOR)
         video.open_video(width, height, OUTPUT_FPS)
         ret, old_frame = cap.read()
-        old_frame = cv2.resize(old_frame, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
         old_gray = cv2.cvtColor(old_frame, 
                         cv2.COLOR_BGR2GRAY)
         old_gray = cv2.rotate(old_gray, cv2.ROTATE_90_CLOCKWISE)
