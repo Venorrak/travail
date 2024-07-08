@@ -15,13 +15,16 @@ OUTPUT_FPS: float = 20 #fps of the output video
 MIN_FPS: int = 1 #minimun number of frames per frame
 MAX_FPS: int = 5 #maximun number of frames per frame
 
-SPRAY_INTENSITY: int = 100 #intensity of the spray 0-255
 
-
-SIZE_FACTOR: float = 0.5 #factor to resize the frame
+SIZE_FACTOR: float = 0.25 #factor to resize the frame
 ROW_PX_FROM_TOP: int = int(200 * SIZE_FACTOR) #detection zone for solenoids
 SPRAY_RANGE: int = int(200 * SIZE_FACTOR)  #range of the spray in px
 FONT_SCALE = SIZE_FACTOR #scale of the font
+
+
+SPRAY_INTENSITY: int = 100 #intensity of the spray 0-255
+SPRAY_SPACING: int = int(40 * SIZE_FACTOR) #spacing between the spray
+
 
 # params for corner detection 
 FEATURE_PARAMS = dict( maxCorners = 100, 
@@ -139,7 +142,7 @@ def analyze_frame(cap):
                                                 THRESHOLD)
     
     sprayed = funcs.get_sprayed_weed(NUMBER_OF_COLS, ROW_PX_FROM_TOP, opened_closed, solenoid_active,
-                                     SPRAY_RANGE, delta_movement, SPRAY_INTENSITY)
+                                     SPRAY_RANGE, delta_movement, SPRAY_INTENSITY, SPRAY_SPACING)
 
     for i in range(1, 256):
         frame[sprayed == i] = (0, 255-i, i)

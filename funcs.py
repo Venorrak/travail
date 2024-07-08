@@ -279,7 +279,7 @@ def old_get_sprayed_weed(cols:int, row_px: int, frame:np.array, solenoid_active:
         cv2.addWeighted(final, 1, black_screen, 1, 0, final)
     return final
 
-def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: list[bool], spray_range: int, delta_movement: tuple[int, int], spray_intensity: int) -> np.array:
+def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: list[bool], spray_range: int, delta_movement: tuple[int, int], spray_intensity: int, spray_spacing: int) -> np.array:
     global spray_history
     """
     Create black frame where only the green in solenoid_active is shown
@@ -300,7 +300,7 @@ def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: l
 
         # Delete centers that are too close to each other
         dist = np.sqrt(np.sum((spray_history_np[:, np.newaxis] - spray_history_np[np.newaxis, :])**2, axis=-1))
-        mask = np.triu(dist < 40, 1).any(axis=0)
+        mask = np.triu(dist < spray_spacing, 1).any(axis=0)
         spray_history_np = spray_history_np[~mask]
 
         # Remove sprays out of bounds
