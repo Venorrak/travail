@@ -86,7 +86,7 @@ def analyze_frame(cap):
 
 def main():
     global source_fps
-    cap = cv2.VideoCapture("video1.mp4")
+    cap = cv2.VideoCapture("test_data/video1.mp4")
     source_fps = int(cap.get(cv2.CAP_PROP_FPS))
     if not (cap.isOpened()):
         cap.release()
