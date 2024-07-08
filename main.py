@@ -18,7 +18,7 @@ MAX_FPS: int = 5 #maximun number of frames per frame
 SPRAY_INTENSITY: int = 100 #intensity of the spray 0-255
 
 
-SIZE_FACTOR: float = 0.25 #factor to resize the frame
+SIZE_FACTOR: float = 0.5 #factor to resize the frame
 ROW_PX_FROM_TOP: int = int(200 * SIZE_FACTOR) #detection zone for solenoids
 SPRAY_RANGE: int = int(200 * SIZE_FACTOR)  #range of the spray in px
 FONT_SCALE = SIZE_FACTOR #scale of the font
@@ -67,7 +67,7 @@ def analyze_frame(cap):
 
     # Get the frame from the video
     ret, frame_original = cap.read()
-      
+    
     frame = cv2.resize(frame_original, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
 
     #rotate the frame according to the planning
@@ -163,8 +163,8 @@ def main():
         raise IOError("Could not open video device")
     else:
         # sample first frame to get the width and height for the output video
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) * SIZE_FACTOR)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * SIZE_FACTOR)
         video.open_video(width, height, OUTPUT_FPS)
         ret, old_frame = cap.read()
         old_frame = cv2.resize(old_frame, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)

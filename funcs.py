@@ -279,9 +279,6 @@ def old_get_sprayed_weed(cols:int, row_px: int, frame:np.array, solenoid_active:
         cv2.addWeighted(final, 1, black_screen, 1, 0, final)
     return final
 
-import cv2
-import numpy as np
-
 def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: list[bool], spray_range: int, delta_movement: tuple[int, int], spray_intensity: int) -> np.array:
     global spray_history
     """
