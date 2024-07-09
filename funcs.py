@@ -1,9 +1,15 @@
 import cv2
 import numpy as np
 
-spray_history: list[tuple[int, int]] = []
-
 def rotate(frame: np.array, current_frame: int, source_fps: int, planning: list):
+    """
+    rotate the frame according to the planning
+    :param frame: The frame to rotate
+    :param current_frame: The current frame
+    :param source_fps: The source fps of the video
+    :param planning: The planning of the rotation
+    :return: The rotated frame
+    """
     current_second = int(current_frame / source_fps)
     for stage in planning:
         if stage["timestamp"] > current_second:
@@ -25,6 +31,7 @@ def divide_frame(frame: np.array, cols: int, row_px: int) -> list[np.array]:
     Divide a frame into rows*cols smaller frames
     :param frame: The frame to divide
     :param cols: The number of columns to divide the frame into
+    :param row_px: The number of pixels from the top to divide the frame
     :return: A list of smaller frames
     """
 
@@ -197,6 +204,13 @@ def printUI(frame: np.array, cols: int, row_px: int, solenoid_active: list[bool]
     Print the UI to the frame
     :param frame: The frame to print the UI to
     :param cols: The number of columns
+    :param row_px: The number of pixels from the top where the spray is
+    :param solenoid_active: The active solenoids
+    :param fps: The frames per second of the simulation
+    :param speed: The speed the robot should move
+    :param current_frame: The current frame of the video
+    :param font_scale: The scale of the font
+    :param font_thickness: The thickness of the font
     :return: The frame with the UI
     """
     frame_height, frame_width = frame.shape[:2]
@@ -280,16 +294,21 @@ def old_get_sprayed_weed(cols:int, row_px: int, frame:np.array, solenoid_active:
     return final
 
 def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: list[bool], spray_range: int, delta_movement: tuple[int, int], spray_intensity: int, spray_spacing: int) -> np.array:
-    global spray_history
+    if not hasattr(get_sprayed_weed, "spray_history"):
+        get_sprayed_weed.spray_history = []
+    spray_history = get_sprayed_weed.spray_history
+    
     """
-    Create black frame where only the green in solenoid_active is shown
+    Create a mask representing all sprayed weeds
     :param cols: The number of columns
     :param row_px: The number of pixels from the top to apply the effect
     :param frame: The frame to apply the effect to
     :param solenoid_active: The active solenoids
     :param spray_range: The range of the spray
     :param delta_movement: The movement of the frame
-    :return: The frame with the spray effect
+    :param spray_intensity: The intensity of the spray
+    :param spray_spacing: The spacing between sprays
+    :return: The mask of the sprays
     """
     frame_height, frame_width = frame.shape[:2]
     col_width = frame_width // cols
@@ -336,6 +355,8 @@ def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: l
         black_screen[min_y:max_y, min_x:max_x][frame[min_y:max_y, min_x:max_x] == 0] = 0
 
         cv2.addWeighted(final, 1, black_screen, 1, 0, final)
+    
+    get_sprayed_weed.spray_history = spray_history
 
     return final
 

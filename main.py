@@ -36,9 +36,6 @@ FEATURE_PARAMS = dict( maxCorners = 100,
 LK_PARAMS = dict( winSize = (15, 15), 
                   maxLevel = 2, 
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)) 
-  
-# Create some random colors 
-COLOR = np.random.randint(0, 255, (100, 3)) 
 
 PLANNING: list = [
     {
@@ -55,13 +52,9 @@ source_fps: int = 10
 current_frame: int = 1
 old_gray: np.array = None
 p0 = None
-spray_history: list[tuple[int, int]] = []
 
 def analyze_frame(cap):
     global current_frame
-    global old_gray
-    global p0
-
     # Get the start time of current frame
     start_frame = time.time()
 
@@ -83,11 +76,11 @@ def analyze_frame(cap):
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
     # calculate optical flow
-    p1, status, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None)
+    p1, status, err = cv2.calcOpticalFlowPyrLK(analyze_frame.old_gray, frame_gray, analyze_frame.p0, None)
     
     # Select good points 
     good_new = p1[status == 1] 
-    good_old = p0[status == 1]
+    good_old = analyze_frame.p0[status == 1]
     
     # Preallocate the array to avoid repeated allocation in the loop
     all_movements = np.zeros((len(good_new), 2))
@@ -102,8 +95,8 @@ def analyze_frame(cap):
     # Calculate the average movement
     delta_movement = (np.mean(all_movements, axis=0).astype(int) * SIZE_FACTOR).astype(int)
     
-    old_gray = frame_gray.copy() 
-    p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, 
+    analyze_frame.old_gray = frame_gray.copy() 
+    analyze_frame.p0 = cv2.goodFeaturesToTrack(analyze_frame.old_gray, mask = None, 
                                     **FEATURE_PARAMS)
     
     if (display_flow := False): 
@@ -164,8 +157,6 @@ def analyze_frame(cap):
 
 def main():
     global source_fps
-    global old_gray
-    global p0
     cap = cv2.VideoCapture("test_data/video1.mp4")
     source_fps = int(cap.get(cv2.CAP_PROP_FPS))
     if not (cap.isOpened()):
@@ -178,10 +169,10 @@ def main():
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * SIZE_FACTOR)
         video.open_video(width, height, OUTPUT_FPS)
         ret, old_frame = cap.read()
-        old_gray = cv2.cvtColor(old_frame, 
+        analyze_frame.old_gray = cv2.cvtColor(old_frame, 
                         cv2.COLOR_BGR2GRAY)
-        old_gray = cv2.rotate(old_gray, cv2.ROTATE_90_CLOCKWISE)
-        p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, 
+        analyze_frame.old_gray = cv2.rotate(analyze_frame.old_gray, cv2.ROTATE_90_CLOCKWISE)
+        analyze_frame.p0 = cv2.goodFeaturesToTrack(analyze_frame.old_gray, mask = None, 
                                     **FEATURE_PARAMS)
         if cap.isOpened():
             result = analyze_frame(cap)
