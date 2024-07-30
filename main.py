@@ -16,7 +16,7 @@ MIN_FPS: int = 1 #minimun number of frames per frame
 MAX_FPS: int = 5 #maximun number of frames per frame
 
 
-SIZE_FACTOR: float = 0.25 #factor to resize the frame
+SIZE_FACTOR: float = 0.5 #factor to resize the frame
 ROW_PX_FROM_TOP: int = int(200 * SIZE_FACTOR) #detection zone for solenoids
 SPRAY_RANGE: int = int(200 * SIZE_FACTOR)  #range of the spray in px
 FONT_SCALE = SIZE_FACTOR #scale of the font
