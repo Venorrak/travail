@@ -18,7 +18,7 @@ MAX_FPS: int = 5 #maximun number of frames per frame
 
 SIZE_FACTOR: float = 0.5 #factor to resize the frame
 ROW_PX_FROM_TOP: int = int(200 * SIZE_FACTOR) #detection zone for solenoids
-SPRAY_RANGE: int = int(200 * SIZE_FACTOR)  #range of the spray in px
+SPRAY_RANGE: int = int(250 * SIZE_FACTOR)  #range of the spray in px
 FONT_SCALE = SIZE_FACTOR #scale of the font
 
 
@@ -134,12 +134,14 @@ def analyze_frame(cap):
                                                 opened_closed, solenoid_active, 
                                                 THRESHOLD)
     
+    #create mask of the sprayed weed
     sprayed = funcs.get_sprayed_weed(NUMBER_OF_COLS, ROW_PX_FROM_TOP, opened_closed, solenoid_active,
                                      SPRAY_RANGE, delta_movement, SPRAY_INTENSITY, SPRAY_SPACING)
 
     for i in range(1, 256):
         frame[sprayed == i] = (0, 255-i, i)
 
+    # get the speed of the robot
     speed = funcs.get_speed(solenoid_active, MAX_SPEED, MIN_SPEED)
 
     # calculate the fps

@@ -49,7 +49,6 @@ def divide_frame(frame: np.array, cols: int, row_px: int) -> list[np.array]:
 
     return divided_frames
 
-# TODO : Remove this function. Reason overhead
 def get_rgb_channels(img: np.array) -> tuple[np.array, np.array, np.array]:
     """
     Split an image into its channels and return them in RGB order
@@ -59,7 +58,6 @@ def get_rgb_channels(img: np.array) -> tuple[np.array, np.array, np.array]:
 
     # Split the image into channels and convert to float to avoid overflow
     blue_channel, green_channel, red_channel = cv2.split(np.array(img, dtype=np.float32))
-    # TODO: verify if this is the right order for the gopro
 
     # Return the channels in RGB order (Makes it easier to change channel order if the camera uses a different order)
     return red_channel, green_channel, blue_channel
@@ -169,16 +167,22 @@ def activate_solenoids(cols: int, row_px: int, frame: np.array, solenoid_active:
     """
 
     # Get the divided frames
-    divided_frames = divide_frame(frame, cols, row_px)
+    divided_frames = divide_frame(frame, cols * 2, row_px)
 
-    # Check each column
-    for i in range(cols):
-        # Calculate the percentage of white in the column
-        white_percentage = 100 - ((np.sum(divided_frames[i] == 0) / divided_frames[i].size) * 100)
-
+    # # Check each column
+    # for i in range(cols * 2):
+    #     # Calculate the percentage of white in the column
+    #     white_percentage = 100 - ((np.sum(divided_frames[i] == 0) / divided_frames[i].size) * 100)
+    frames_white_percentage = [100 - ((np.sum(divided_frames[i] == 0) / divided_frames[i].size) * 100) for i in range(cols * 2)]
+        
+    for i in range(cols * 2):
         # Activate the solenoid if the percentage is above the threshold
-        solenoid_active[i] = white_percentage > threshold
-
+        if frames_white_percentage[i] > threshold:
+            solenoid_active[i // 2] = True
+        if i % 2 != 0:
+            total_white = (frames_white_percentage[i] + frames_white_percentage[i - 1]) / 2
+            if total_white > threshold:
+                solenoid_active[i // 2] = True
     return solenoid_active
 
 def get_speed(solenoid_active: list[bool], max_speed: float, min_speed) -> float:
@@ -218,8 +222,11 @@ def printUI(frame: np.array, cols: int, row_px: int, solenoid_active: list[bool]
     font_size = 2 * font_scale
     
     for i in range(cols):
-        cv2.line(frame, (i * col_width, 0), (i * col_width, frame_height), (0, 0, 255), font_thickness) 
-        cv2.putText(frame, f"{'ON' if solenoid_active[i] else 'OFF'}", (i * col_width + 10, int(30 * font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
+        x = int(i * col_width)
+        x2 = int(x + (col_width / 2))
+        cv2.line(frame, (x, 0), (x, frame_height), (0, 0, 255), font_thickness)
+        cv2.line(frame, (x2, 0), (x2, row_px), (0, 0, 100), font_thickness)
+        cv2.putText(frame, f"{'ON' if solenoid_active[i] else 'OFF'}", (i * col_width + 30, int(30 * font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
     cv2.line(frame, (0, row_px), (frame_width, row_px), (0, 0, 255), font_thickness)
     cv2.putText(frame, f"FPS: {fps:.2f}", (10, int(100 * font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
     cv2.putText(frame, f"Speed: {speed:.2f}", (10, int(150* font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
