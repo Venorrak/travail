@@ -6,14 +6,17 @@ import time
 import funcs
 import video
 
+#TODO: terminal asking params
+#TODO: calculate total weed sprayed
+
 NUMBER_OF_COLS: int = 8 #number of solenoids
 
-THRESHOLD: int = 30 #in % of green in the column
+THRESHOLD: int = 30 #in % of green in the column **
 MAX_SPEED: float = 2.5 #in km/s simaled
 MIN_SPEED: float = 0.5 #in km/s simaled
 OUTPUT_FPS: float = 20 #fps of the output video
-MIN_FPS: int = 1 #minimun number of frames per frame
-MAX_FPS: int = 5 #maximun number of frames per frame
+MIN_FPS: int = 1 #minimun number of frames per frame **
+MAX_FPS: int = 5 #maximun number of frames per frame **
 
 
 SIZE_FACTOR: float = 0.5 #factor to resize the frame
@@ -92,6 +95,18 @@ def analyze_frame(cap):
     # Calculate movements
     all_movements = a_b - c_d    
     
+    #remove vectors that are not in the same general direction
+    all_angles = []
+    for i in range(len(all_movements)):
+        vector = [all_movements[i][0], all_movements[i][1]]
+        angle = np.arctan(vector[1] / vector[0])
+        degree = np.degrees(angle)
+        all_angles.append(degree)
+    avg_angle = np.average(all_angles)
+    for i in range(len(all_angles)):
+        if all_angles[i] > avg_angle + 5 or all_angles[i] < avg_angle - 5:
+            np.delete(all_movements, i)
+            
     # Calculate the average movement
     delta_movement = (np.mean(all_movements, axis=0).astype(int) * SIZE_FACTOR).astype(int)
     
@@ -99,7 +114,7 @@ def analyze_frame(cap):
     analyze_frame.p0 = cv2.goodFeaturesToTrack(analyze_frame.old_gray, mask = None, 
                                     **FEATURE_PARAMS)
     
-    if (display_flow := False): 
+    if (False): 
         black_screen = np.zeros_like(frame)
             
         # Draw lines and circles on the black screen
@@ -140,6 +155,88 @@ def analyze_frame(cap):
 
     for i in range(1, 256):
         frame[sprayed == i] = (0, 255-i, i)
+        
+    ##################
+    ##     stats    ##
+    ##################
+    
+    print("Delta movement: ", delta_movement)
+    last_sprayed_frame = analyze_frame.old_spray
+    height, width, _ = last_sprayed_frame.shape
+    if delta_movement[0] < 0:
+        #robot moved to the right
+        h_part = last_sprayed_frame[:, 0:-delta_movement[0]]
+        
+        if delta_movement[1] < 0:
+            #robot moved up
+            v_part = last_sprayed_frame[height+delta_movement[1]:, -delta_movement[0]:]
+        elif delta_movement[1] > 0:
+            #robot moved down
+            v_part = last_sprayed_frame[height-delta_movement[1]:, -delta_movement[0]:]
+        else:
+            #print("Robot did not move vertically")
+            v_part = None
+        
+    elif delta_movement[0] > 0:
+        #robot moved to the left
+        h_part = last_sprayed_frame[:, width-delta_movement[0]:]
+        
+        if delta_movement[1] < 0:
+            #robot moved up
+            v_part = last_sprayed_frame[height+delta_movement[1]:, 0:width-delta_movement[0]]
+        elif delta_movement[1] > 0:
+            #robot moved down
+            v_part = last_sprayed_frame[height-delta_movement[1]:, 0:width-delta_movement[0]]
+        else:
+            #print("Robot did not move vertically")
+            v_part = None
+        
+    else:
+        #print("Robot did not move horizontally")
+        h_part = None
+        
+        if delta_movement[1] < 0:
+            #robot moved up
+            v_part = last_sprayed_frame[height+delta_movement[1]:, :]
+        elif delta_movement[1] > 0:
+            #robot moved down
+            v_part = last_sprayed_frame[height-delta_movement[1]:, :]
+        else:
+            #print("Robot did not move vertically")
+            v_part = None
+        
+    if h_part is None:
+        h_red = 0
+        h_green = 0
+    else:
+        cv2.imshow("h_part", h_part)
+        h_red = np.sum(h_part[:, :, 2])
+        h_green = np.sum(h_part[:, :, 1])
+        
+    if v_part is None:
+        v_red = 0
+        v_green = 0
+    else:
+        cv2.imshow("v_part", v_part)
+        print("v_part refreshed")
+        v_red = np.sum(v_part[:, :, 2])
+        v_green = np.sum(v_part[:, :, 1])
+        
+    total_red = np.add(h_red, v_red)
+    total_green = np.add(h_green, v_green)
+    print("Total red: ", total_red)
+    print("Total green: ", total_green)
+    
+    blank_canvas = np.zeros_like(frame)
+    blank_canvas[opened_closed==255] = (0,255,0)
+    for i in range(1, 256):
+        blank_canvas[sprayed == i] = (0, 255-i, i)
+    cv2.imshow("Sprayed", blank_canvas)
+    analyze_frame.old_spray = blank_canvas
+    
+    ##################
+    ##   end stats  ##
+    ##################
 
     # get the speed of the robot
     speed = funcs.get_speed(solenoid_active, MAX_SPEED, MIN_SPEED)
@@ -176,6 +273,10 @@ def main():
         analyze_frame.old_gray = cv2.rotate(analyze_frame.old_gray, cv2.ROTATE_90_CLOCKWISE)
         analyze_frame.p0 = cv2.goodFeaturesToTrack(analyze_frame.old_gray, mask = None, 
                                     **FEATURE_PARAMS)
+        sample_frame = old_frame.copy()
+        sample_frame = cv2.rotate(sample_frame, cv2.ROTATE_90_CLOCKWISE)
+        sample_frame = cv2.resize(sample_frame, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
+        analyze_frame.old_spray = np.zeros_like(sample_frame)
         if cap.isOpened():
             result = analyze_frame(cap)
 
