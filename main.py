@@ -55,8 +55,14 @@ source_fps: int = 10
 current_frame: int = 1
 old_gray: np.array = None
 p0 = None
+global global_total_red
+global global_total_green
+global_total_green = 0
+global_total_red = 0
 
 def analyze_frame(cap):
+    global global_total_red
+    global global_total_green
     global current_frame
     # Get the start time of current frame
     start_frame = time.time()
@@ -98,6 +104,8 @@ def analyze_frame(cap):
     #remove vectors that are not in the same general direction
     all_angles = []
     for i in range(len(all_movements)):
+        if all_movements[i][0] == 0:
+            all_movements[i][0] = 0.0001
         vector = [all_movements[i][0], all_movements[i][1]]
         angle = np.arctan(vector[1] / vector[0])
         degree = np.degrees(angle)
@@ -160,7 +168,7 @@ def analyze_frame(cap):
     ##     stats    ##
     ##################
     
-    print("Delta movement: ", delta_movement)
+    #print("Delta movement: ", delta_movement)
     last_sprayed_frame = analyze_frame.old_spray
     height, width, _ = last_sprayed_frame.shape
     if delta_movement[0] < 0:
@@ -209,7 +217,8 @@ def analyze_frame(cap):
         h_red = 0
         h_green = 0
     else:
-        cv2.imshow("h_part", h_part)
+        #cv2.imshow("h_part", h_part)
+        cv2.waitKey(1)  # Add a delay of 1 millisecond to allow time for the frame to be displayed
         h_red = np.sum(h_part[:, :, 2])
         h_green = np.sum(h_part[:, :, 1])
         
@@ -217,21 +226,23 @@ def analyze_frame(cap):
         v_red = 0
         v_green = 0
     else:
-        cv2.imshow("v_part", v_part)
-        print("v_part refreshed")
+        #cv2.imshow("v_part", v_part)
+        cv2.waitKey(1)  # Add a delay of 1 millisecond to allow time for the frame to be displayed
         v_red = np.sum(v_part[:, :, 2])
         v_green = np.sum(v_part[:, :, 1])
         
     total_red = np.add(h_red, v_red)
     total_green = np.add(h_green, v_green)
-    print("Total red: ", total_red)
-    print("Total green: ", total_green)
+    #print("Total red: ", total_red)
+    #print("Total green: ", total_green)
+    global_total_red = np.add(total_red, global_total_red)
+    global_total_green = np.add(total_green, global_total_green)
     
     blank_canvas = np.zeros_like(frame)
     blank_canvas[opened_closed==255] = (0,255,0)
     for i in range(1, 256):
         blank_canvas[sprayed == i] = (0, 255-i, i)
-    cv2.imshow("Sprayed", blank_canvas)
+    #cv2.imshow("Sprayed", blank_canvas)
     analyze_frame.old_spray = blank_canvas
     
     ##################
@@ -256,6 +267,8 @@ def analyze_frame(cap):
 
 def main():
     global source_fps
+    global global_total_green
+    global global_total_red
     cap = cv2.VideoCapture("test_data/video1.mp4")
     source_fps = int(cap.get(cv2.CAP_PROP_FPS))
     if not (cap.isOpened()):
@@ -296,6 +309,8 @@ def main():
         except Exception as e:
             print(e)
             video.close_video()
+            efficiency = funcs.calculate_efficiency(global_total_green, global_total_red)
+            print("Efficiency: ", efficiency, "%")
             break
         
         # press q to close the window

@@ -376,3 +376,15 @@ def average_movement(all_movements: list[tuple[int, int]]) -> tuple[int, int]:
 
     # Calculate the average movement
     return tuple(map(lambda x: sum(x) // len(all_movements), zip(*all_movements)))
+
+def calculate_efficiency(total_green: int, total_red: int) -> float:
+    """
+    Calculate the efficiency of the spraying
+    :param total_green: The total green pixels
+    :param total_sprayed: The total sprayed pixels
+    :return: The efficiency of the spraying
+    """
+
+    total = total_green + total_red
+    
+    return (total_red * 100) / total if total != 0 else 0
