@@ -6,28 +6,36 @@ import time
 import funcs
 import video
 
-#TODO: terminal asking params
-#TODO: calculate total weed sprayed
-
 NUMBER_OF_COLS: int = 8 #number of solenoids
-
-THRESHOLD: int = 30 #in % of green in the column **
 MAX_SPEED: float = 2.5 #in km/s simaled
 MIN_SPEED: float = 0.5 #in km/s simaled
 OUTPUT_FPS: float = 20 #fps of the output video
-MIN_FPS: int = 1 #minimun number of frames per frame **
-MAX_FPS: int = 5 #maximun number of frames per frame **
-
-
-SIZE_FACTOR: float = 0.5 #factor to resize the frame
-ROW_PX_FROM_TOP: int = int(200 * SIZE_FACTOR) #detection zone for solenoids
-SPRAY_RANGE: int = int(250 * SIZE_FACTOR)  #range of the spray in px
-FONT_SCALE = SIZE_FACTOR #scale of the font
-
-
 SPRAY_INTENSITY: int = 100 #intensity of the spray 0-255
-SPRAY_SPACING: int = int(40 * SIZE_FACTOR) #spacing between the spray
 
+print("Do you want to use the default parameters? (y/n)")
+change_params = input()
+if change_params == "n":
+    print("Enter the solenoid activation threshold (0 - 100):")
+    THRESHOLD: int = int(input()) #in % of green in the column
+    print("Enter the minimum number of frames a frame will be displayed (x>=1)(dependent on speed):")
+    MIN_FPS: int = int(input()) #minimun number of frames per frame
+    print("Enter the maximum number of frames a frame will be displayed (dependent on speed):")
+    MAX_FPS: int = int(input()) #maximun number of frames per frame
+    print("Enter the factor to resize the frame (0-1 float):")
+    SIZE_FACTOR: float = float(input()) #factor to resize the frame
+    print("Enter the range of the spray in px (Default : 250):")
+    SPRAY_RANGE: int = int(int(input()) * SIZE_FACTOR)  #range of the spray in px
+else:
+    print("Default parameters will be used")
+    THRESHOLD : int = 1 #in % of green in the column
+    MIN_FPS: int = 1 #minimun number of frames per frame
+    MAX_FPS: int = 5 #maximun number of frames per frame
+    SIZE_FACTOR: float = 0.5 #factor to resize the frame
+    SPRAY_RANGE: int = int(300 * SIZE_FACTOR)  #range of the spray in px
+    
+ROW_PX_FROM_TOP: int = int(200 * SIZE_FACTOR) #detection zone for solenoids
+FONT_SCALE = SIZE_FACTOR #scale of the font
+SPRAY_SPACING: int = int(40 * SIZE_FACTOR) #spacing between the spray
 
 # params for corner detection 
 FEATURE_PARAMS = dict( maxCorners = 100, 
@@ -40,6 +48,7 @@ LK_PARAMS = dict( winSize = (15, 15),
                   maxLevel = 2, 
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)) 
 
+#to rotate the image according to the planning at the given timestamp
 PLANNING: list = [
     {
         "timestamp": 18,
@@ -51,14 +60,14 @@ PLANNING: list = [
     }
 ]
 
-source_fps: int = 10
+source_fps: int = 10 #fps of the source video
 current_frame: int = 1
 old_gray: np.array = None
 p0 = None
 global global_total_red
 global global_total_green
-global_total_green = 0
-global_total_red = 0
+global_total_green = 0 #total green
+global_total_red = 0 #total red sprayed
 
 def analyze_frame(cap):
     global global_total_red
@@ -110,18 +119,20 @@ def analyze_frame(cap):
         angle = np.arctan(vector[1] / vector[0])
         degree = np.degrees(angle)
         all_angles.append(degree)
-    avg_angle = np.average(all_angles)
+    median_angle = np.median(np.sort(all_angles))
     for i in range(len(all_angles)):
-        if all_angles[i] > avg_angle + 5 or all_angles[i] < avg_angle - 5:
+        if all_angles[i] > median_angle + 5 or all_angles[i] < median_angle - 5:
             np.delete(all_movements, i)
-            
+    
     # Calculate the average movement
     delta_movement = (np.mean(all_movements, axis=0).astype(int) * SIZE_FACTOR).astype(int)
     
+    #prepare next optical flow calculation
     analyze_frame.old_gray = frame_gray.copy() 
     analyze_frame.p0 = cv2.goodFeaturesToTrack(analyze_frame.old_gray, mask = None, 
                                     **FEATURE_PARAMS)
     
+    # Display the optical flow
     if (False): 
         black_screen = np.zeros_like(frame)
             
@@ -138,6 +149,7 @@ def analyze_frame(cap):
     ## end of optical flow ##
     #########################
     
+    # resize the frame
     frame = cv2.resize(frame, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
 
     # get the excess of green 
@@ -149,7 +161,7 @@ def analyze_frame(cap):
     # open and close the image
     opened_closed = funcs.open_and_close_image(tresh)
 
-    # color the detected green on the original frame
+    # color the detected green (weeds) on the original frame
     frame[opened_closed==255] = (0,255,0)
 
     # get the active solenoids and the speed the robot should move
@@ -161,6 +173,7 @@ def analyze_frame(cap):
     sprayed = funcs.get_sprayed_weed(NUMBER_OF_COLS, ROW_PX_FROM_TOP, opened_closed, solenoid_active,
                                      SPRAY_RANGE, delta_movement, SPRAY_INTENSITY, SPRAY_SPACING)
 
+    #color the sprayed weed on the original frame
     for i in range(1, 256):
         frame[sprayed == i] = (0, 255-i, i)
         
@@ -171,6 +184,8 @@ def analyze_frame(cap):
     #print("Delta movement: ", delta_movement)
     last_sprayed_frame = analyze_frame.old_spray
     height, width, _ = last_sprayed_frame.shape
+    
+    #get the parts of the last sprayed frame that are not visible in the current frame
     if delta_movement[0] < 0:
         #robot moved to the right
         h_part = last_sprayed_frame[:, 0:-delta_movement[0]]
@@ -213,6 +228,7 @@ def analyze_frame(cap):
             #print("Robot did not move vertically")
             v_part = None
         
+    #get the total red and green in the parts
     if h_part is None:
         h_red = 0
         h_green = 0
@@ -230,7 +246,8 @@ def analyze_frame(cap):
         cv2.waitKey(1)  # Add a delay of 1 millisecond to allow time for the frame to be displayed
         v_red = np.sum(v_part[:, :, 2])
         v_green = np.sum(v_part[:, :, 1])
-        
+    
+    # add the total red and green to the global total
     total_red = np.add(h_red, v_red)
     total_green = np.add(h_green, v_green)
     #print("Total red: ", total_red)
@@ -238,6 +255,7 @@ def analyze_frame(cap):
     global_total_red = np.add(total_red, global_total_red)
     global_total_green = np.add(total_green, global_total_green)
     
+    #save the sprayed frame for the next frame
     blank_canvas = np.zeros_like(frame)
     blank_canvas[opened_closed==255] = (0,255,0)
     for i in range(1, 256):
@@ -269,6 +287,7 @@ def main():
     global source_fps
     global global_total_green
     global global_total_red
+    
     cap = cv2.VideoCapture("test_data/video1.mp4")
     source_fps = int(cap.get(cv2.CAP_PROP_FPS))
     if not (cap.isOpened()):
@@ -280,16 +299,21 @@ def main():
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) * SIZE_FACTOR)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * SIZE_FACTOR)
         video.open_video(width, height, OUTPUT_FPS)
+        
+        #initialize the optical flow variables
         ret, old_frame = cap.read()
         analyze_frame.old_gray = cv2.cvtColor(old_frame, 
                         cv2.COLOR_BGR2GRAY)
         analyze_frame.old_gray = cv2.rotate(analyze_frame.old_gray, cv2.ROTATE_90_CLOCKWISE)
         analyze_frame.p0 = cv2.goodFeaturesToTrack(analyze_frame.old_gray, mask = None, 
                                     **FEATURE_PARAMS)
+        # initialize the old_spray with the first frame
         sample_frame = old_frame.copy()
         sample_frame = cv2.rotate(sample_frame, cv2.ROTATE_90_CLOCKWISE)
         sample_frame = cv2.resize(sample_frame, (0, 0), fx=SIZE_FACTOR, fy=SIZE_FACTOR)
         analyze_frame.old_spray = np.zeros_like(sample_frame)
+        
+        # analyze the first frame
         if cap.isOpened():
             result = analyze_frame(cap)
 
@@ -309,12 +333,16 @@ def main():
         except Exception as e:
             print(e)
             video.close_video()
+            # calculate the efficiency
             efficiency = funcs.calculate_efficiency(global_total_green, global_total_red)
             print("Efficiency: ", efficiency, "%")
             break
         
         # press q to close the window
         if cv2.waitKey(1) & 0xFF == ord('q') or done:
+            # calculate the efficiency
+            efficiency = funcs.calculate_efficiency(global_total_green, global_total_red)
+            print("Efficiency: ", efficiency, "%")
             cap.release()
             video.close_video()
             cv2.destroyAllWindows()
