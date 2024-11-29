@@ -1,18 +1,15 @@
 import cv2
 import numpy as np
 
-spray_history: list[tuple[int, int]] = []
-
-def get_frame(cap) -> np.array:
-    """
-    Get a frame from a video capture object
-    :param cap: The video capture object
-    :return: The frame
-    """
-    ret, frame = cap.read()
-    return frame
-
 def rotate(frame: np.array, current_frame: int, source_fps: int, planning: list):
+    """
+    rotate the frame according to the planning
+    :param frame: The frame to rotate
+    :param current_frame: The current frame
+    :param source_fps: The source fps of the video
+    :param planning: The planning of the rotation
+    :return: The rotated frame
+    """
     current_second = int(current_frame / source_fps)
     for stage in planning:
         if stage["timestamp"] > current_second:
@@ -34,6 +31,7 @@ def divide_frame(frame: np.array, cols: int, row_px: int) -> list[np.array]:
     Divide a frame into rows*cols smaller frames
     :param frame: The frame to divide
     :param cols: The number of columns to divide the frame into
+    :param row_px: The number of pixels from the top to divide the frame
     :return: A list of smaller frames
     """
 
@@ -41,7 +39,7 @@ def divide_frame(frame: np.array, cols: int, row_px: int) -> list[np.array]:
     frame_height, frame_width = frame.shape[:2]
 
     #divide frame in two at a defined number of pixels from the top
-    frame = frame[0:row_px, 0:frame_width]
+    frame = frame[0:int(row_px), 0:frame_width]
 
     # Calculate the height and width of each smaller frame
     col_width = frame_width // cols
@@ -60,7 +58,6 @@ def get_rgb_channels(img: np.array) -> tuple[np.array, np.array, np.array]:
 
     # Split the image into channels and convert to float to avoid overflow
     blue_channel, green_channel, red_channel = cv2.split(np.array(img, dtype=np.float32))
-    # TODO: verify if this is the right order for the gopro
 
     # Return the channels in RGB order (Makes it easier to change channel order if the camera uses a different order)
     return red_channel, green_channel, blue_channel
@@ -73,7 +70,8 @@ def calcluate_exg(img) -> np.array:
     """
 
     # Split the image into channels and convert to float to avoid overflow
-    red_channel, green_channel, blue_channel = get_rgb_channels(img)
+    # BEWARE of the order of the channels
+    blue_channel, green_channel, red_channel = cv2.split(np.array(img, dtype=np.float32))
 
     # Calculate the excess of green
     exg_img = 2 * green_channel - (red_channel + blue_channel)
@@ -169,16 +167,22 @@ def activate_solenoids(cols: int, row_px: int, frame: np.array, solenoid_active:
     """
 
     # Get the divided frames
-    divided_frames = divide_frame(frame, cols, row_px)
+    divided_frames = divide_frame(frame, cols * 2, row_px)
 
-    # Check each column
-    for i in range(cols):
-        # Calculate the percentage of white in the column
-        white_percentage = 100 - ((np.sum(divided_frames[i] == 0) / divided_frames[i].size) * 100)
-
+    # # Check each column
+    # for i in range(cols * 2):
+    #     # Calculate the percentage of white in the column
+    #     white_percentage = 100 - ((np.sum(divided_frames[i] == 0) / divided_frames[i].size) * 100)
+    frames_white_percentage = [100 - ((np.sum(divided_frames[i] == 0) / divided_frames[i].size) * 100) for i in range(cols * 2)]
+        
+    for i in range(cols * 2):
         # Activate the solenoid if the percentage is above the threshold
-        solenoid_active[i] = white_percentage > threshold
-
+        if frames_white_percentage[i] > threshold:
+            solenoid_active[i // 2] = True
+        if i % 2 != 0:
+            total_white = (frames_white_percentage[i] + frames_white_percentage[i - 1]) / 2
+            if total_white > threshold:
+                solenoid_active[i // 2] = True
     return solenoid_active
 
 def get_speed(solenoid_active: list[bool], max_speed: float, min_speed) -> float:
@@ -199,29 +203,44 @@ def get_speed(solenoid_active: list[bool], max_speed: float, min_speed) -> float
     
     return speed
 
-def printUI(frame: np.array, cols: int, row_px: int, solenoid_active: list[bool], fps: float, speed: float) -> np.array:
+def printUI(frame: np.array, cols: int, row_px: int, solenoid_active: list[bool], fps: float, speed: float, current_frame : int = -1, font_scale : float = 1, font_thickness : int = 2) -> np.array:
     """
     Print the UI to the frame
     :param frame: The frame to print the UI to
     :param cols: The number of columns
+    :param row_px: The number of pixels from the top where the spray is
+    :param solenoid_active: The active solenoids
+    :param fps: The frames per second of the simulation
+    :param speed: The speed the robot should move
+    :param current_frame: The current frame of the video
+    :param font_scale: The scale of the font
+    :param font_thickness: The thickness of the font
     :return: The frame with the UI
     """
     frame_height, frame_width = frame.shape[:2]
     col_width = frame_width // cols
+    font_size = 2 * font_scale
+    
     for i in range(cols):
-        cv2.line(frame, (i * col_width, 0), (i * col_width, frame_height), (0, 0, 255), 2) 
-        cv2.putText(frame, f"{'ON' if solenoid_active[i] else 'OFF'}", (i * col_width + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-    cv2.line(frame, (0, row_px), (frame_width, row_px), (0, 0, 255), 2)
-    cv2.putText(frame, f"FPS: {fps:.2f}", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-    cv2.putText(frame, f"Speed: {speed:.2f}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-    cv2.putText(frame, f"pression 1/{np.sum(solenoid_active)}", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        x = int(i * col_width)
+        x2 = int(x + (col_width / 2))
+        cv2.line(frame, (x, 0), (x, frame_height), (0, 0, 255), font_thickness)
+        cv2.line(frame, (x2, 0), (x2, row_px), (0, 0, 100), font_thickness)
+        cv2.putText(frame, f"{'ON' if solenoid_active[i] else 'OFF'}", (i * col_width + 30, int(30 * font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
+    cv2.line(frame, (0, row_px), (frame_width, row_px), (0, 0, 255), font_thickness)
+    cv2.putText(frame, f"FPS: {fps:.2f}", (10, int(100 * font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
+    cv2.putText(frame, f"Speed: {speed:.2f}", (10, int(150* font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
+    cv2.putText(frame, f"pression 1/{np.sum(solenoid_active)}", (10, int(200* font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
+    
+    if (current_frame != -1):
+        cv2.putText(frame, f"Frame: {current_frame}", (10, int(250* font_scale)), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), font_thickness)
 
     return frame
 
-def get_sprayed_weed(cols:int, row_px: int, frame:np.array, solenoid_active: list[bool], spray_range:int, delta_movement: tuple[int, int], spray_intensity: int) -> np.array:
+def old_get_sprayed_weed(cols:int, row_px: int, frame:np.array, solenoid_active: list[bool], spray_range:int, delta_movement: tuple[int, int], spray_intensity: int) -> np.array:
     global spray_history
     """
-    create black frame where only the green in solneoid_active is shown
+    create black frame where only the green in solenoid_active is shown
     :param cols: The number of columns
     :param row_px: The number of pixels from the top to apply the effect
     :param frame: The frame to apply the effect to
@@ -281,6 +300,73 @@ def get_sprayed_weed(cols:int, row_px: int, frame:np.array, solenoid_active: lis
         cv2.addWeighted(final, 1, black_screen, 1, 0, final)
     return final
 
+def get_sprayed_weed(cols: int, row_px: int, frame: np.array, solenoid_active: list[bool], spray_range: int, delta_movement: tuple[int, int], spray_intensity: int, spray_spacing: int) -> np.array:
+    if not hasattr(get_sprayed_weed, "spray_history"):
+        get_sprayed_weed.spray_history = []
+    spray_history = get_sprayed_weed.spray_history
+    
+    """
+    Create a mask representing all sprayed weeds
+    :param cols: The number of columns
+    :param row_px: The number of pixels from the top to apply the effect
+    :param frame: The frame to apply the effect to
+    :param solenoid_active: The active solenoids
+    :param spray_range: The range of the spray
+    :param delta_movement: The movement of the frame
+    :param spray_intensity: The intensity of the spray
+    :param spray_spacing: The spacing between sprays
+    :return: The mask of the sprays
+    """
+    frame_height, frame_width = frame.shape[:2]
+    col_width = frame_width // cols
+
+    # Convert spray_history to a NumPy array for faster operations
+    if spray_history:
+        spray_history_np = np.array(spray_history)
+
+        # Delete centers that are too close to each other
+        dist = np.sqrt(np.sum((spray_history_np[:, np.newaxis] - spray_history_np[np.newaxis, :])**2, axis=-1))
+        mask = np.triu(dist < spray_spacing, 1).any(axis=0)
+        spray_history_np = spray_history_np[~mask]
+
+        # Remove sprays out of bounds
+        in_bounds_mask = (0 < spray_history_np[:, 0]) & (spray_history_np[:, 0] < frame_width) & (0 < spray_history_np[:, 1]) & (spray_history_np[:, 1] < frame_height)
+        spray_history_np = spray_history_np[in_bounds_mask]
+
+        # Move the sprays
+        spray_history_np += delta_movement
+
+    else:
+        spray_history_np = np.empty((0, 2), int)
+
+    # Add new sprays
+    new_sprays = np.array([(int(col_width / 2 + (col_width * i)), int(row_px // 2)) for i in range(cols) if solenoid_active[i]])
+    if new_sprays.size > 0:
+        spray_history_np = np.vstack((spray_history_np, new_sprays))
+
+    # Update spray_history with the modified array
+    spray_history = spray_history_np.tolist()
+
+    # Prepare the final and black_screen frames
+    final = np.zeros_like(frame)
+
+    for center in spray_history:
+        black_screen = np.zeros_like(frame)
+        for r in range(spray_range):
+            intensity = spray_intensity - ((r * spray_intensity) / spray_range)
+            cv2.circle(black_screen, tuple(center), r, intensity, 2)
+
+        min_x, max_x = max(0, int(center[0]) - spray_range), min(frame_width, int(center[0]) + spray_range)
+        min_y, max_y = max(0, int(center[1]) - spray_range), min(frame_height, int(center[1]) + spray_range)
+
+        black_screen[min_y:max_y, min_x:max_x][frame[min_y:max_y, min_x:max_x] == 0] = 0
+
+        cv2.addWeighted(final, 1, black_screen, 1, 0, final)
+    
+    get_sprayed_weed.spray_history = spray_history
+
+    return final
+
 def average_movement(all_movements: list[tuple[int, int]]) -> tuple[int, int]:
     """
     Calculate the average movement from a list of movements
@@ -290,3 +376,15 @@ def average_movement(all_movements: list[tuple[int, int]]) -> tuple[int, int]:
 
     # Calculate the average movement
     return tuple(map(lambda x: sum(x) // len(all_movements), zip(*all_movements)))
+
+def calculate_efficiency(total_green: int, total_red: int) -> float:
+    """
+    Calculate the efficiency of the spraying
+    :param total_green: The total green pixels
+    :param total_sprayed: The total sprayed pixels
+    :return: The efficiency of the spraying
+    """
+
+    total = total_green + total_red
+    
+    return (total_red * 100) / total if total != 0 else 0
